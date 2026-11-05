@@ -1,0 +1,42 @@
+name: Actualizar pronosticos NFL
+
+on:
+  workflow_dispatch:          # boton para correrlo a mano
+  schedule:                   # horarios en UTC
+    - cron: "0 15 * * 2"      # martes: cierra la semana y prepara la siguiente
+    - cron: "0 15 * * 3"      # miercoles: primer reporte de lesiones
+    - cron: "30 20 * * 4"     # jueves: antes del partido del jueves
+    - cron: "30 22 * * 5"     # viernes: estatus oficial de lesiones
+    - cron: "0 22 * * 6"      # sabado: lesiones finales y clima
+    - cron: "0 12 * * 0"      # domingo temprano (antes de partidos en Europa)
+    - cron: "30 15 * * 0"     # domingo antes de los partidos de la 1 PM ET
+    - cron: "15 19 * * 0"     # domingo antes de los partidos de la tarde
+    - cron: "15 23 * * 0"     # domingo antes del partido de la noche
+    - cron: "0 22 * * 1"      # lunes antes del partido del lunes
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: bash run.sh
+      - name: Guardar resultados
+        run: |
+          git config user.name "actualizador-nfl"
+          git config user.email "actions@github.com"
+          git add state docs
+          git commit -m "Actualizacion automatica $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "Sin cambios"
+          git push
