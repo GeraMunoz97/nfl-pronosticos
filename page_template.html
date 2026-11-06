@@ -187,6 +187,14 @@ h3{font-family:var(--cond);font-weight:700;font-size:20px;margin:14px 0 6px}
 .tdrow.ns{opacity:.62}
 .tdrow .res{font-weight:800;font-size:13px;margin-left:4px}
 .tdrow.sc .res{color:var(--go)}.tdrow.ns .res{color:var(--warn)}
+.upd{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.upd button{font:600 14px var(--body);border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.15);color:#fff;padding:8px 14px;border-radius:999px;cursor:pointer}
+.upd button.prim{background:#fff;color:var(--field)}
+.upd span{font-size:13px;opacity:.9}
+.updp{background:rgba(0,0,0,.25);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13.5px;display:none}
+.updp.on{display:block}
+.updp input{width:100%;font:500 14px var(--body);padding:8px;border-radius:8px;border:0;margin:6px 0}
+.updp a{color:#fff;font-weight:700}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -195,6 +203,8 @@ h3{font-family:var(--cond);font-weight:700;font-size:20px;margin:14px 0 6px}
   <div class="wk" id="wkt"><small>Pronósticos NFL 2026</small>Semana</div>
   <p>Predicciones del modelo para cada partido, con recomendaciones de apuesta y el análisis completo. Solo los totales ★ tienen una señal validada; lo demás se muestra para darle seguimiento.</p>
   <div class="sig" id="sig"></div>
+  <div class="upd"><button class="prim" id="updBtn">⟳ Actualizar ahora</button><span id="updMsg"></span></div>
+  <div class="updp" id="updPanel"></div>
 </header>
 <main>
   <div class="note"><b>Cómo usar esta guía.</b> Todo se calcula con la línea de consenso del mercado. En cada recomendación verás qué línea buscar y el <b>momio mínimo</b> que debe pagar tu casa de apuestas para que convenga. Si tu casa paga eso o más, tiene valor; si paga menos, no apuestes. Reporte final de lesiones: viernes.</div>
@@ -934,6 +944,43 @@ document.addEventListener("click",e=>{const b=e.target.closest("button[data-wf]"
   render(); const el=document.getElementById("list"); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"start"})});
 document.addEventListener("change",e=>{const i=e.target; if(!i.dataset)return;
   if(i.dataset.hs){hS=+i.value; hW=null; render()} else if(i.dataset.hw){hW=+i.value; render()} else if(i.dataset.ds){dS=i.value; render()}});
+
+
+// ---------- ACTUALIZACION MANUAL VIA GITHUB ----------
+const GH=(()=>{const h=location.hostname, p=location.pathname.split("/").filter(Boolean);
+  if(!h.endsWith(".github.io")) return null; return {owner:h.replace(".github.io",""),repo:p[0]||(h)}})();
+const WF="actualizar.yml";
+function ghTok(){try{return localStorage.getItem("gh-token")||""}catch(e){return ""}}
+function updMsg(s){document.getElementById("updMsg").textContent=s}
+function updPanel(html){const p=document.getElementById("updPanel"); p.innerHTML=html; p.classList.toggle("on",!!html)}
+async function ghApi(path,opt={}){const r=await fetch(`https://api.github.com/repos/${GH.owner}/${GH.repo}${path}`,{...opt,headers:{"Accept":"application/vnd.github+json",...(ghTok()?{"Authorization":"Bearer "+ghTok()}:{}),...(opt.headers||{})}});return r}
+async function pollRun(since){
+  for(let i=0;i<90;i++){
+    await new Promise(r=>setTimeout(r,20000));
+    try{const r=await ghApi(`/actions/workflows/${WF}/runs?per_page=1`); const j=await r.json(); const run=j.workflow_runs&&j.workflow_runs[0];
+      if(!run||new Date(run.created_at)<since){updMsg("Esperando a que GitHub inicie…");continue}
+      if(run.status!=="completed"){updMsg(`Actualizando… (${Math.round((Date.now()-new Date(run.created_at))/60000)} min). Suele tardar 10 a 20 min.`);continue}
+      if(run.conclusion==="success"){updMsg("Listo. Publicando la página nueva…"); setTimeout(()=>location.reload(true),90000); return}
+      updMsg("La actualización falló."); updPanel(`Revisa el detalle en <a href="${run.html_url}" target="_blank" rel="noopener">GitHub</a> y mándame una captura del error.`); return
+    }catch(e){updMsg("Sin conexión con GitHub, reintentando…")}}
+}
+async function launch(){
+  if(!GH){updPanel("El botón funciona en la versión publicada en GitHub (tuusuario.github.io)."); return}
+  const actions=`https://github.com/${GH.owner}/${GH.repo}/actions/workflows/${WF}`;
+  if(!ghTok()){updPanel(`<b>Opción rápida:</b> <a href="${actions}" target="_blank" rel="noopener">abre GitHub Actions</a> y toca <b>Run workflow</b>.<br><br>
+     <b>Actualizar directo desde la app:</b> pega aquí tu llave de GitHub (se guarda solo en este celular).
+     <input id="tokIn" type="password" placeholder="github_pat_..." autocomplete="off"><button id="tokSave">Guardar llave y actualizar</button>`); return}
+  const since=new Date(Date.now()-60000); updMsg("Enviando solicitud a GitHub…"); updPanel("");
+  try{const r=await ghApi(`/actions/workflows/${WF}/dispatches`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:"main"})});
+    if(r.status===204){updMsg("Actualización iniciada. Puedes dejar la app abierta."); pollRun(since)}
+    else if(r.status===401||r.status===403||r.status===404){updMsg("La llave no es válida o no tiene permiso."); updPanel(`Revisa que la llave tenga permiso <b>Actions: Read and write</b> en este repositorio. <button id="tokDel">Borrar llave guardada</button> · <a href="${actions}" target="_blank" rel="noopener">abrir GitHub Actions</a>`)}
+    else updMsg("GitHub respondió con error "+r.status)}catch(e){updMsg("No se pudo conectar con GitHub.")}
+}
+document.addEventListener("click",e=>{
+  if(e.target.id==="updBtn") launch();
+  if(e.target.id==="tokSave"){const v=document.getElementById("tokIn").value.trim(); if(!v)return; try{localStorage.setItem("gh-token",v)}catch(_){ } launch()}
+  if(e.target.id==="tokDel"){try{localStorage.removeItem("gh-token")}catch(_){ } updPanel(""); updMsg("Llave borrada.")}
+});
 
 // ---------- render ----------
 let filter="pred"; const open=new Set();
